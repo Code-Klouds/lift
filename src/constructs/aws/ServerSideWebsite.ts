@@ -1,3 +1,5 @@
+import glob from "glob";
+import type { GlobOptionsWithFileTypesFalse } from "glob";
 import type { CfnBucket } from "aws-cdk-lib/aws-s3";
 import { Bucket } from "aws-cdk-lib/aws-s3";
 import type { CfnDistribution, IOriginRequestPolicy } from "aws-cdk-lib/aws-cloudfront";
@@ -281,15 +283,14 @@ export class ServerSideWebsite extends AwsConstruct {
         }
     }
 
-
     private getFilesMatchingPattern(directory: string, pattern: string): string[] {
-        const glob = require("glob");
-        return glob.sync(pattern, {
+        const options: GlobOptionsWithFileTypesFalse = {
             cwd: directory,
-            absolute: true
-        });
-    }
+            absolute: true,
+        };
 
+        return glob.sync(pattern, options);
+    }
 
     private async clearCDNCache(): Promise<void> {
         const distributionId = await this.getDistributionId();
