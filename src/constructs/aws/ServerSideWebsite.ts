@@ -244,8 +244,10 @@ export class ServerSideWebsite extends AwsConstruct {
 
         let invalidate = false;
         for (const [localPattern, s3Pattern] of Object.entries(this.getAssetPatterns())) {
-            const baseDir = path.dirname(localPattern);
-            const globPattern = path.basename(localPattern);
+            // Split the pattern into the base directory and glob pattern
+            const globIndex = localPattern.indexOf('*');
+            const baseDir = globIndex > -1 ? localPattern.substring(0, globIndex - 1) : localPattern;
+            const globPattern = globIndex > -1 ? localPattern.substring(globIndex) : '**/*';
 
             if (!fs.existsSync(baseDir)) {
                 throw new ServerlessError(
@@ -265,7 +267,7 @@ export class ServerSideWebsite extends AwsConstruct {
 
             for (const file of files) {
                 const relativePath = path.relative(baseDir, file);
-                const targetKey = path.posix.join(s3Pattern, relativePath);
+                const targetKey = path.posix.join(s3Pattern.replace('**/*', ''), relativePath);
 
                 if (uploadProgress) {
                     uploadProgress.update(`Uploading '${file}' to 's3://${bucketName}/${targetKey}'`);
@@ -291,6 +293,7 @@ export class ServerSideWebsite extends AwsConstruct {
             uploadProgress.remove();
         }
     }
+
 
 
     private getFilesMatchingPattern(directory: string, pattern: string): string[] {
