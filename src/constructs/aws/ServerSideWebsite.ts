@@ -243,18 +243,29 @@ export class ServerSideWebsite extends AwsConstruct {
         }
 
         let invalidate = false;
-        for (const [localPath, pattern] of Object.entries(this.getAssetPatterns())) {
-            if (!fs.existsSync(localPath)) {
+        for (const [localPattern, s3Pattern] of Object.entries(this.getAssetPatterns())) {
+            const baseDir = path.dirname(localPattern);
+            const globPattern = path.basename(localPattern);
+
+            if (!fs.existsSync(baseDir)) {
                 throw new ServerlessError(
-                    `Error in 'constructs.${this.id}': the directory '${localPath}' does not exist`,
+                    `Error in 'constructs.${this.id}': the base directory '${baseDir}' does not exist`,
                     "LIFT_INVALID_CONSTRUCT_CONFIGURATION"
                 );
             }
 
-            const files = this.getFilesMatchingPattern(localPath, pattern);
+            console.log(`Processing files in directory '${baseDir}' with pattern '${globPattern}'`);
+
+            const files = this.getFilesMatchingPattern(baseDir, globPattern);
+            if (files.length === 0) {
+                console.log(`No files matched for pattern '${globPattern}' in directory '${baseDir}'`);
+            } else {
+                console.log(`Matched files for pattern '${globPattern}' in directory '${baseDir}':`, files);
+            }
+
             for (const file of files) {
-                const relativePath = path.relative(localPath, file);
-                const targetKey = path.posix.join(relativePath);
+                const relativePath = path.relative(baseDir, file);
+                const targetKey = path.posix.join(s3Pattern, relativePath);
 
                 if (uploadProgress) {
                     uploadProgress.update(`Uploading '${file}' to 's3://${bucketName}/${targetKey}'`);
@@ -281,14 +292,23 @@ export class ServerSideWebsite extends AwsConstruct {
         }
     }
 
+
     private getFilesMatchingPattern(directory: string, pattern: string): string[] {
         const glob = require("glob"); // eslint-disable-line
-
-        return glob.sync(pattern, { // eslint-disable-line
+        const matchedFiles = glob.sync(pattern, { // eslint-disable-line
             cwd: directory, // eslint-disable-line
-            absolute: true, // eslint-disable-line
+            absolute: true // eslint-disable-line
         }); // eslint-disable-line
+
+        if (matchedFiles.length === 0) { // eslint-disable-line
+            console.log(`No files matched for pattern '${pattern}' in directory '${directory}'`); // eslint-disable-line
+        } else { // eslint-disable-line
+            console.log(`Matched files for pattern '${pattern}' in directory '${directory}':`, matchedFiles); // eslint-disable-line
+        } // eslint-disable-line
+
+        return matchedFiles; // eslint-disable-line
     }
+
 
     private async clearCDNCache(): Promise<void> {
         const distributionId = await this.getDistributionId();
