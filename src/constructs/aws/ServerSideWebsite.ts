@@ -25,7 +25,7 @@ import { AwsConstruct } from "@lift/constructs/abstracts";
 import type { ConstructCommands } from "@lift/constructs";
 import type { AwsProvider } from "@lift/providers";
 import { ensureNameMaxLength } from "../../utils/naming";
-import { s3Put, s3Sync } from "../../utils/s3-sync";
+import { s3Put } from "../../utils/s3-sync";
 import { emptyBucket, invalidateCloudFrontCache } from "../../classes/aws";
 import ServerlessError from "../../utils/error";
 import { redirectToMainDomain } from "../../classes/cloudfrontFunctions";
@@ -250,6 +250,7 @@ export class ServerSideWebsite extends AwsConstruct {
                     "LIFT_INVALID_CONSTRUCT_CONFIGURATION"
                 );
             }
+
             let s3PathPrefix: string = path.dirname(pattern);
             if (s3PathPrefix.startsWith("/")) {
                 s3PathPrefix = s3PathPrefix.slice(1);
@@ -257,30 +258,35 @@ export class ServerSideWebsite extends AwsConstruct {
 
             if (fs.lstatSync(filePath).isDirectory()) {
                 // Directory
-                if (uploadProgress) {
-                    uploadProgress.update(`Uploading '${filePath}' to 's3://${bucketName}/${s3PathPrefix}'`);
-                } else {
-                    getUtils().log(`Uploading '${filePath}' to 's3://${bucketName}/${s3PathPrefix}'`);
+                const files = this.getFilesRecursively(filePath);
+                for (const file of files) {
+                    const relativePath = path.relative(filePath, file);
+                    const targetKey = path.posix.join(s3PathPrefix, relativePath);
+
+                    if (uploadProgress) {
+                        uploadProgress.update(`Uploading '${file}' to 's3://${bucketName}/${targetKey}'`);
+                    } else {
+                        getUtils().log(`Uploading '${file}' to 's3://${bucketName}/${targetKey}'`);
+                    }
+
+                    await s3Put(this.provider, bucketName, targetKey, fs.readFileSync(file));
+                    invalidate = true;
                 }
-                const { hasChanges } = await s3Sync({
-                    aws: this.provider,
-                    localPath: filePath,
-                    targetPathPrefix: s3PathPrefix,
-                    bucketName,
-                });
-                invalidate = invalidate || hasChanges;
             } else {
-                // File
+                // Single file
                 const targetKey = path.posix.join(s3PathPrefix, path.basename(filePath));
+
                 if (uploadProgress) {
                     uploadProgress.update(`Uploading '${filePath}' to 's3://${bucketName}/${targetKey}'`);
                 } else {
                     getUtils().log(`Uploading '${filePath}' to 's3://${bucketName}/${targetKey}'`);
                 }
+
                 await s3Put(this.provider, bucketName, targetKey, fs.readFileSync(filePath));
                 invalidate = true;
             }
         }
+
         if (invalidate) {
             if (uploadProgress) {
                 uploadProgress.update(`Clearing CloudFront DNS cache`);
@@ -293,6 +299,24 @@ export class ServerSideWebsite extends AwsConstruct {
         if (uploadProgress) {
             uploadProgress.remove();
         }
+    }
+
+    private getFilesRecursively(directory: string): string[] {
+        let results: string[] = [];
+        const list = fs.readdirSync(directory);
+
+        list.forEach((file) => {
+            const filePath = path.join(directory, file);
+            const stat = fs.statSync(filePath);
+
+            if (stat.isDirectory()) {
+                results = results.concat(this.getFilesRecursively(filePath));
+            } else {
+                results.push(filePath);
+            }
+        });
+
+        return results;
     }
 
     private async clearCDNCache(): Promise<void> {
