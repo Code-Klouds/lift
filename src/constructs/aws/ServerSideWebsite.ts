@@ -243,46 +243,26 @@ export class ServerSideWebsite extends AwsConstruct {
         }
 
         let invalidate = false;
-        for (const [pattern, filePath] of Object.entries(this.getAssetPatterns())) {
-            if (!fs.existsSync(filePath)) {
+        for (const [localPath, pattern] of Object.entries(this.getAssetPatterns())) {
+            if (!fs.existsSync(localPath)) {
                 throw new ServerlessError(
-                    `Error in 'constructs.${this.id}': the file or directory '${filePath}' does not exist`,
+                    `Error in 'constructs.${this.id}': the directory '${localPath}' does not exist`,
                     "LIFT_INVALID_CONSTRUCT_CONFIGURATION"
                 );
             }
 
-            let s3PathPrefix: string = path.dirname(pattern);
-            if (s3PathPrefix.startsWith("/")) {
-                s3PathPrefix = s3PathPrefix.slice(1);
-            }
-
-            if (fs.lstatSync(filePath).isDirectory()) {
-                // Directory
-                const files = this.getFilesRecursively(filePath);
-                for (const file of files) {
-                    const relativePath = path.relative(filePath, file);
-                    const targetKey = path.posix.join(s3PathPrefix, relativePath);
-
-                    if (uploadProgress) {
-                        uploadProgress.update(`Uploading '${file}' to 's3://${bucketName}/${targetKey}'`);
-                    } else {
-                        getUtils().log(`Uploading '${file}' to 's3://${bucketName}/${targetKey}'`);
-                    }
-
-                    await s3Put(this.provider, bucketName, targetKey, fs.readFileSync(file));
-                    invalidate = true;
-                }
-            } else {
-                // Single file
-                const targetKey = path.posix.join(s3PathPrefix, path.basename(filePath));
+            const files = this.getFilesMatchingPattern(localPath, pattern);
+            for (const file of files) {
+                const relativePath = path.relative(localPath, file);
+                const targetKey = path.posix.join(relativePath);
 
                 if (uploadProgress) {
-                    uploadProgress.update(`Uploading '${filePath}' to 's3://${bucketName}/${targetKey}'`);
+                    uploadProgress.update(`Uploading '${file}' to 's3://${bucketName}/${targetKey}'`);
                 } else {
-                    getUtils().log(`Uploading '${filePath}' to 's3://${bucketName}/${targetKey}'`);
+                    getUtils().log(`Uploading '${file}' to 's3://${bucketName}/${targetKey}'`);
                 }
 
-                await s3Put(this.provider, bucketName, targetKey, fs.readFileSync(filePath));
+                await s3Put(this.provider, bucketName, targetKey, fs.readFileSync(file));
                 invalidate = true;
             }
         }
@@ -301,23 +281,15 @@ export class ServerSideWebsite extends AwsConstruct {
         }
     }
 
-    private getFilesRecursively(directory: string): string[] {
-        let results: string[] = [];
-        const list = fs.readdirSync(directory);
 
-        list.forEach((file) => {
-            const filePath = path.join(directory, file);
-            const stat = fs.statSync(filePath);
-
-            if (stat.isDirectory()) {
-                results = results.concat(this.getFilesRecursively(filePath));
-            } else {
-                results.push(filePath);
-            }
+    private getFilesMatchingPattern(directory: string, pattern: string): string[] {
+        const glob = require("glob");
+        return glob.sync(pattern, {
+            cwd: directory,
+            absolute: true
         });
-
-        return results;
     }
+
 
     private async clearCDNCache(): Promise<void> {
         const distributionId = await this.getDistributionId();
