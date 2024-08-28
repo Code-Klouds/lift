@@ -259,11 +259,6 @@ export class ServerSideWebsite extends AwsConstruct {
             console.log(`Processing files in directory '${baseDir}' with pattern '${globPattern}'`);
 
             const files = this.getFilesMatchingPattern(baseDir, globPattern);
-            if (files.length === 0) {
-                console.log(`No files matched for pattern '${globPattern}' in directory '${baseDir}'`);
-            } else {
-                console.log(`Matched files for pattern '${globPattern}' in directory '${baseDir}':`, files);
-            }
 
             for (const file of files) {
                 const relativePath = path.relative(baseDir, file);
