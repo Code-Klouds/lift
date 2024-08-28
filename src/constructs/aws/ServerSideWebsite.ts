@@ -267,7 +267,7 @@ export class ServerSideWebsite extends AwsConstruct {
 
             for (const file of files) {
                 const relativePath = path.relative(baseDir, file);
-                const targetKey = path.posix.join(s3Pattern.replace('**/*', ''), relativePath);
+                const targetKey = path.posix.join(path.dirname(s3Pattern), relativePath);
 
                 if (uploadProgress) {
                     uploadProgress.update(`Uploading '${file}' to 's3://${bucketName}/${targetKey}'`);
@@ -293,7 +293,6 @@ export class ServerSideWebsite extends AwsConstruct {
             uploadProgress.remove();
         }
     }
-
 
 
     private getFilesMatchingPattern(directory: string, pattern: string): string[] {
